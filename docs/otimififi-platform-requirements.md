@@ -1,6 +1,6 @@
 # Otimififi Site 部署记录
 
-2026-11-06，纯浏览器版已通过 Site API 发布为第 6 版。真实公开网址的完整 Playwright 验收通过：文字 EPUB、实际 EPUBCheck、断网制作、刷新恢复、备份恢复均正常；后端请求与书籍上传均为 0。无需修改平台基础设施。
+2026-11-06，纯浏览器版已通过 Site API 发布为第 7 版，修复长章节预览的白底截断。真实公开网址的完整 Playwright 验收通过：文字 EPUB、实际 EPUBCheck、断网制作、刷新恢复、备份恢复均正常；后端请求与书籍上传均为 0。桌面、平板、手机的长短章节预览共六组检查通过。无需修改平台基础设施。
 
 ## 发布范围
 
@@ -42,6 +42,7 @@ Vite 静态预览使用站点现有 CSP，供开发和 CI 验证。平台仍可�
 
 ```bash
 EPUB_APP_URL=https://xm5pvv.otimififi.site npm --prefix web run smoke
+EPUB_APP_URL=https://xm5pvv.otimififi.site npm --prefix web run smoke:preview
 ```
 
 验收包括示例打开、PDF 导入、原稿 canvas、EPUB 版式与字体、内容复核、浏览器 EPUBCheck、文字下载、断网制作、刷新恢复和备份导入。网络记录要求没有本机 API 请求和书籍上传。HTTP 200 或发布成功本身不算完成。
