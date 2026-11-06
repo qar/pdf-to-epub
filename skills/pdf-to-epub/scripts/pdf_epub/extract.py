@@ -20,11 +20,12 @@ def tool(name):
     return path
 
 
-def run(args):
+def run(args, input_text=None):
     return subprocess.run(
         args,
         check=False,
         capture_output=True,
+        input=input_text,
         text=True,
         encoding="utf-8",
         errors="replace",
@@ -287,12 +288,15 @@ def extract_pdf(pdf_path, work_dir, language="und", password_file=None):
             s in result.stderr.lower() for s in ("copying", "password", "encrypted")
         ):
             readable = temp / "readable.pdf"
-            password = (
-                f"--password-file={Path(password_file).resolve()}"
-                if password_file
-                else "--password="
+            password = ""
+            if password_file:
+                with Path(password_file).open(encoding="utf-8") as password_input:
+                    password = password_input.readline().rstrip("\r\n")
+            # Read argument lines on stdin to keep passwords out of process arguments.
+            decrypted = run(
+                [tool("qpdf"), "@-", "--decrypt", str(pdf_path), str(readable)],
+                input_text=f"--password={password}\n",
             )
-            decrypted = run([tool("qpdf"), password, "--decrypt", str(pdf_path), str(readable)])
             if decrypted.returncode not in (0, 3) or not readable.exists():
                 raise ConversionError(
                     "password_required",

@@ -114,11 +114,12 @@ class ExtractTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             make_pdf(root / "source.pdf")
+            password = "reader test 'quoted' $value"
             subprocess.run(
                 [
                     "qpdf",
                     "--encrypt",
-                    "reader-test-password",
+                    password,
                     "owner-test-password",
                     "256",
                     "--",
@@ -133,7 +134,7 @@ class ExtractTests(unittest.TestCase):
             )
             self.assertNotEqual(code, 0)
             self.assertEqual(result["code"], "password_required")
-            (root / "password.txt").write_text("reader-test-password\n")
+            (root / "password.txt").write_text(password + "\n")
             code, result = self.invoke(
                 "extract",
                 str(root / "restricted.pdf"),
