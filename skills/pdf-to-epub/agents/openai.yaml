@@ -1,0 +1,4 @@
+interface:
+  display_name: "PDF 转 EPUB"
+  short_description: "将 PDF 制作为可重排文字 EPUB，并完成段落校对、出版风格排版与验证"
+  default_prompt: "使用 $pdf-to-epub 将这份 PDF 制作为文字 EPUB，按现代出版物风格排版，并验证内容完整性和 EPUB 格式。"

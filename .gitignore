@@ -11,6 +11,7 @@ __pycache__/
 build/
 dist/
 .coverage
+.ruff_cache/
 htmlcov/
 .DS_Store
 .work/

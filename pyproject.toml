@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pdf-to-epub"
+version = "0.1.0"
+description = "Agent-assisted production of reflowable text EPUBs from PDF"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["coverage>=7,<8", "PyYAML>=6,<7", "build>=1,<2", "ruff>=0.12,<1"]
+
+[project.scripts]
+pdf-to-epub = "pdf_epub.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["skills/pdf-to-epub/scripts"]
+include = ["pdf_epub*"]
+
+[tool.setuptools.package-data]
+pdf_epub = ["assets/*.css", "assets/fonts/*.otf", "assets/fonts/*.txt"]
+
+[tool.coverage.run]
+branch = true
+source = ["skills/pdf-to-epub/scripts/pdf_epub"]
+
+[tool.coverage.report]
+show_missing = true
+fail_under = 80
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"

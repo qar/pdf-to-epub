@@ -1,0 +1,5 @@
+include skills/pdf-to-epub/SKILL.md
+include skills/pdf-to-epub/scripts/epub.py
+recursive-include skills/pdf-to-epub/agents *.yaml
+recursive-include skills/pdf-to-epub/references *.md
+recursive-include tests *.py
