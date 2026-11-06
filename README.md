@@ -1,8 +1,34 @@
 # PDF to EPUB
 
-把 PDF 制作为可搜索、可调字号的文字 EPUB。仓库包含一个 agent skill，以及 skill 和后续本地网页 app 共用的 Python 转换核心。
+把 PDF 制作为可搜索、可调字号的文字 EPUB。仓库包含网页工作台、agent skill，以及两者共用的 Python 转换核心。
 
 目前提供原生文字提取、复制限制处理、段落候选、可编辑制作方案、出版物风格排版和 EPUBCheck 校验。章节与段落仍需要语义复核，首版不承诺任意 PDF 一键达到出版质量。
+
+## 网页工作台
+
+公开入口：[PDF to EPUB](https://xm5pvv.otimififi.site/)。网页由 Otimififi 提供。书籍由你电脑上的转换服务处理，文件不会上传到 Otimififi。
+
+当前公开入口已发布，但完整应用仍受平台 CSP 限制。本机工作台可正常使用。平台所需变更见 [部署阻碍](docs/otimififi-platform-requirements.md)。
+
+需要 Python 3.10+、Node.js 22.12+、Poppler 和 qpdf。正式导出还需要 Java 与完整的 [EPUBCheck 发行包](https://github.com/w3c/epubcheck/releases)。在仓库根目录安装并启动：
+
+```bash
+python3 -m venv .venv
+.venv/bin/python -m pip install -e '.[dev]'
+npm --prefix web ci
+npm --prefix web run build
+.venv/bin/pdf-to-epub serve \
+  --allowed-origin https://xm5pvv.otimififi.site \
+  --epubcheck-jar /path/to/epubcheck.jar
+```
+
+打开公开入口，选择“连接本机”，在本机确认页完成连接。浏览器询问本地网络权限时允许连接。也可直接打开 [本机入口](http://127.0.0.1:48291)，无需外网配对。
+
+工作台提供书库、PDF 导入、章节与段落整理、排除记录、原稿对照、经典／现代／紧凑版式和 EPUB 排版预览。正式下载需要内容复核与实际 EPUBCheck 通过。草稿导出会标记 `.draft.epub`。
+
+默认工作目录是 `~/.local/share/pdf-to-epub`。用 `--data-dir` 指定其他目录，用 `--port` 更改端口。服务只监听 `127.0.0.1`。移动布局可用于窄窗口；手机上的 localhost 指手机自身，无法直接连接电脑服务。
+
+详细架构、API、部署命令和验收方法见 [网页实现记录](docs/web-workspace.md)。
 
 ## 使用 Skill
 
@@ -55,6 +81,14 @@ python3 -m venv .venv
 
 根目录 Python 包与独立 skill 使用同一份 `skills/pdf-to-epub/scripts/pdf_epub`。源码布局是为了让 skill 可以独立复制，app 则可以通过 Python API 或 JSON 命令行接口调用同一核心。
 
-后续 app 已确定采用本地网页工具：浏览器中校对和预览，文件在本机处理。当前仓库尚不包含 app 界面，相关工作使用 `bd` 跟踪。
+前端检查：
+
+```bash
+npm --prefix web test
+npm --prefix web run format:check
+npm --prefix web run build
+```
+
+启动本机服务后，在 `web` 中执行 `npx playwright install chromium` 和 `npm run smoke`，可复现浏览器验收。验收产物放在忽略的 `.work/browser`。开发与验收进展使用 `bd` 记录。
 
 附带的 Source Serif 4 来自 [Adobe Source Serif](https://github.com/adobe-fonts/source-serif)，使用 [SIL Open Font License](skills/pdf-to-epub/scripts/pdf_epub/assets/fonts/OFL.txt)。

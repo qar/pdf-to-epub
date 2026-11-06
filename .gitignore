@@ -17,3 +17,7 @@ htmlcov/
 .work/
 *.pdf
 *.epub
+web/node_modules/
+web/dist/
+web/*.tsbuildinfo
+!web/public/sample.pdf

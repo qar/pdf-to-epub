@@ -88,6 +88,31 @@ class BuildTests(unittest.TestCase):
                 self.assertEqual(result["code"], "source_coverage")
                 self.assertFalse((root / "book.epub").exists())
 
+    def test_typography_settings_are_included_in_the_actual_epub(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            plan, book = fixture(root)
+            book["appearance"] = {
+                "template": "modern",
+                "line_height": 1.7,
+                "font_size": 1.1,
+                "indent": 0,
+            }
+            plan.write_text(json.dumps(book))
+            code, result = self.invoke(plan, root / "book.epub")
+            self.assertEqual(code, 0, result)
+            with zipfile.ZipFile(root / "book.epub") as archive:
+                style = archive.read("EPUB/Styles/book.css").decode()
+                self.assertIn("font-size: 1.10em", style)
+                self.assertIn("line-height: 1.70", style)
+                self.assertIn("text-indent: 0.00em", style)
+                self.assertIn("font-family: system-ui", style)
+            book["appearance"]["font_size"] = 200
+            plan.write_text(json.dumps(book))
+            code, result = self.invoke(plan, root / "invalid.epub")
+            self.assertEqual(code, 1)
+            self.assertEqual(result["code"], "appearance")
+
     def test_review_and_source_evidence_are_required(self):
         for change, expected in [
             ("draft", "review_required"),
@@ -166,6 +191,25 @@ class BuildTests(unittest.TestCase):
                 target = root / "book.epub"
                 self.assertEqual(self.invoke(plan, target)[0], 0)
                 self.assertEqual(internal_check(target)["errors"], [])
+
+    def test_source_title_uses_explicit_line_joins(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            plan, book = fixture(root)
+            source = json.loads((root / "source.json").read_text())
+            section = book["sections"][0]
+            section["title_sources"] = [u["id"] for u in source["units"]]
+            section["title_joins"] = {section["title_sources"][0]: "none"}
+            section["blocks"] = []
+            plan.write_text(json.dumps(book))
+            output = root / "joined.epub"
+            self.assertEqual(self.invoke(plan, output)[0], 0)
+            with zipfile.ZipFile(output) as archive:
+                doc = ET.fromstring(archive.read("EPUB/Text/chapter-1.xhtml"))
+                heading = doc.find(".//{http://www.w3.org/1999/xhtml}h1")
+                self.assertEqual(
+                    "".join(heading.itertext()), "".join(u["text"] for u in source["units"])
+                )
 
     def test_cjk_lines_join_without_spaces_after_fullwidth_punctuation(self):
         with tempfile.TemporaryDirectory() as temp:

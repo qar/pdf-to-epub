@@ -39,3 +39,28 @@ jobs:
           coverage report
       - name: Build Distribution
         run: python -m build
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Check Web Workspace
+        working-directory: web
+        run: |
+          npm ci
+          npm run format:check
+          npm test
+          npm run build
+          npx playwright install --with-deps chromium
+      - name: Verify Browser Workflow
+        run: |
+          pdf-to-epub serve --data-dir "$RUNNER_TEMP/web-workspace" --epubcheck-jar "$EPUBCHECK_JAR" > "$RUNNER_TEMP/web-server.log" 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid"' EXIT
+          curl --retry 10 --retry-connrefused --retry-delay 1 --fail http://127.0.0.1:48291/api/health
+          npm --prefix web run smoke
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: browser-diagnostics
+          path: .work/browser

@@ -1,3 +1,4 @@
+import math
 import re
 from collections import Counter
 from pathlib import Path
@@ -44,6 +45,22 @@ def load_book(plan_path, allow_draft=False):
                 "invalid_source", "Unsupported source text style.", source=unit["id"]
             )
     metadata = book["metadata"]
+    appearance = book.get("appearance", {})
+    if not isinstance(appearance, dict) or appearance.get("template", "classic") not in {
+        "classic",
+        "modern",
+        "compact",
+    }:
+        raise ConversionError("appearance", "Choose a supported typography template.")
+    for key, low, high in (("font_size", 0.85, 1.4), ("line_height", 1.2, 2), ("indent", 0, 2)):
+        if key in appearance:
+            value = appearance[key]
+            if (
+                type(value) not in (int, float)
+                or not math.isfinite(value)
+                or not low <= value <= high
+            ):
+                raise ConversionError("appearance", f"{key} must be between {low} and {high}.")
     if not isinstance(metadata.get("title"), str) or not metadata["title"].strip():
         raise ConversionError("metadata", "A title is required.")
     if not re.fullmatch(r"[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*", metadata.get("language", "")):
@@ -91,7 +108,13 @@ def load_book(plan_path, allow_draft=False):
                 "invalid_section", "Sections require a title, supported kind and text blocks."
             )
         if "title_sources" in section:
-            block_sources({"kind": "heading", "sources": section["title_sources"]})
+            block_sources(
+                {
+                    "kind": "heading",
+                    "sources": section["title_sources"],
+                    "joins": section.get("title_joins", {}),
+                }
+            )
         for block in section.get("blocks", []):
             block_sources(block)
     included = sum(seen.values())

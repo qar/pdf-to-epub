@@ -3,6 +3,7 @@ import json
 import subprocess
 import sys
 import xml.etree.ElementTree as ET
+from pathlib import Path
 
 from .build import build_epub
 from .common import ConversionError
@@ -39,8 +40,42 @@ def main(argv=None):
     build.add_argument(
         "--allow-draft", action="store_true", help="Produce a preview, not a reviewed deliverable."
     )
+    serve = commands.add_parser("serve", help="Start the local browser workspace.")
+    serve.add_argument("--port", type=int, default=48291)
+    serve.add_argument("--data-dir", default=str(Path.home() / ".local/share/pdf-to-epub"))
+    serve.add_argument("--allowed-origin", action="append", default=[])
+    serve.add_argument("--web-dir", default=str(Path(__file__).resolve().parents[4] / "web/dist"))
+    serve.add_argument("--epubcheck-jar")
     args = parser.parse_args(argv)
     try:
+        if args.command == "serve":
+            from .server import make_server
+
+            server = make_server(
+                args.data_dir,
+                args.port,
+                allowed_origins=args.allowed_origin,
+                epubcheck_jar=args.epubcheck_jar,
+                web_dir=args.web_dir,
+            )
+            print(
+                json.dumps(
+                    {
+                        "status": "listening",
+                        "url": f"http://127.0.0.1:{server.server_port}",
+                        "allowed_origins": sorted(server.origins),
+                    },
+                    ensure_ascii=False,
+                ),
+                flush=True,
+            )
+            try:
+                server.serve_forever()
+            except KeyboardInterrupt:
+                pass
+            finally:
+                server.server_close()
+            return 0
         if args.command == "doctor":
             result = doctor(args.epubcheck_jar)
         elif args.command == "validate":

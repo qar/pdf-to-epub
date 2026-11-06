@@ -126,7 +126,14 @@ def build_epub(plan_path, output, allow_draft=False):
         )
         if section.get("title_sources"):
             render_block(
-                header, {"kind": "heading", "sources": section["title_sources"]}, units, "h1"
+                header,
+                {
+                    "kind": "heading",
+                    "sources": section["title_sources"],
+                    "joins": section.get("title_joins", {}),
+                },
+                units,
+                "h1",
             )
         else:
             ET.SubElement(header, "h1").text = section["title"]
@@ -141,7 +148,18 @@ def build_epub(plan_path, output, allow_draft=False):
         root.set("lang", language)
         root.set("{http://www.w3.org/XML/1998/namespace}lang", language)
         files[name] = xml(root)
-    files["EPUB/Styles/book.css"] = (ASSETS / "book.css").read_bytes()
+    css = (ASSETS / "book.css").read_text(encoding="utf-8")
+    appearance = book.get("appearance", {})
+    if appearance:
+        template = appearance.get("template", "classic")
+        size = appearance.get("font_size", 1)
+        leading = appearance.get("line_height", 1.35 if template == "compact" else 1.5)
+        indent = appearance.get("indent", 1.25)
+        family = "font-family: system-ui, sans-serif;" if template == "modern" else ""
+        css += f"\nbody {{ font-size: {size:.2f}em; line-height: {leading:.2f}; {family} }}\n"
+        # Low specificity preserves unindented chapter openings, verse and signatures.
+        css += f"p {{ text-indent: {indent:.2f}em; }}\n"
+    files["EPUB/Styles/book.css"] = css.encode("utf-8")
     for font in sorted((ASSETS / "fonts").iterdir()):
         files[f"EPUB/Fonts/{font.name}"] = font.read_bytes()
     container = ET.Element(

@@ -13,3 +13,5 @@
 运行 `python3 -m unittest discover -s tests -v`。设置 `EPUBCHECK_JAR` 时包含实际合规检查。使用 coverage 检查核心覆盖率。转换成功同时要求文字完整性、结构复核、实际 EPUBCheck 和视觉检查；内部 ZIP 校验不是合规结论。
 
 来源覆盖是制作边界：每个 source ID 恰好引用一次，或者带理由排除。修改模型时同时检查 skill 的模型参考与相应行为测试。
+
+修改网页或本机 API 时，读取 `docs/web-workspace.md` 的连接、保存版本与下载约束。前端运行 `npm --prefix web test`、`npm --prefix web run format:check` 和 `npm --prefix web run build`。涉及完整制作流程时运行其中的浏览器验收。部署脚本仅发布应用资源与原创示例。
