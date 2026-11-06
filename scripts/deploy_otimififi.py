@@ -2,6 +2,7 @@
 
 import argparse
 import base64
+import gzip
 import hashlib
 import json
 import os
@@ -149,14 +150,30 @@ class Publisher:
         }
         subprocess.run(["npm", "run", "build"], cwd=ROOT / "web", env=env, check=True)
         assets = ROOT / "web/dist/assets"
-        js = self.asset(next(assets.glob("index-*.js")), "application/javascript")
+        bundle = next(assets.glob("index-*.js")).read_bytes()
+        compressed = base64.b64encode(gzip.compress(bundle, mtime=0)).decode("ascii")
+        loader = f"""(async () => {{
+  try {{
+    const bytes = Uint8Array.from(atob('{compressed}'), c => c.charCodeAt(0));
+    const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'));
+    const script = document.createElement('script');
+    script.textContent = await new Response(stream).text();
+    document.body.append(script);
+  }} catch (error) {{
+    document.querySelector('.startup-status p').textContent = '应用加载失败，请刷新重试。';
+    console.error('Application startup failed', error);
+  }}
+}})();"""
+        css = [self.asset(file, "text/css") for file in sorted(assets.glob("index-*.css"))]
         self.api("/websites/" + self.website + "/layout", "PUT", {"layout_enabled": False})
         if site["site_tracking_enabled"] or site["site_comment_enabled"]:
             raise RuntimeError(
-                "Disable site tracking and comments before publishing a local workspace."
+                "Disable site tracking and comments before publishing a browser workspace."
             )
         config = {
-            "jsFileLinks": [{"src": js, "defer": True, "position": "body_end"}],
+            "cssFileLinks": [{"href": url} for url in css],
+            "jsFileLinks": [],
+            "inlineScripts": [{"code": loader, "position": "body_end"}],
             "inlineStyles": [
                 ".startup-status{font:15px/1.7 system-ui;max-width:42rem;margin:10vh auto;padding:24px;color:#303638}.startup-status h1{font-size:28px}.startup-status a{color:#286b53;margin-right:24px}"
             ],
@@ -167,7 +184,7 @@ class Publisher:
             "PUT",
             {
                 "title": "PDF to EPUB · 制作工作台",
-                "source_code": '<div id="root"><main class="startup-status"><h1>PDF to EPUB</h1><p>网页应用未启动</p><a href="http://127.0.0.1:48291">打开本机工作台</a><a href="https://github.com/qar/pdf-to-epub">项目与运行说明</a></main></div>',
+                "source_code": '<div id="root"><main class="startup-status"><h1>PDF to EPUB</h1><p>正在加载制作工作台...</p><noscript>请启用 JavaScript。</noscript><a href="https://github.com/qar/pdf-to-epub">项目与运行说明</a></main></div>',
                 "config": config,
             },
         )
@@ -181,8 +198,10 @@ class Publisher:
             "site_url": site["preview"],
             "full_url": page["full_url"],
             "assets": {
-                "js": js,
-                "worker": "bundled inline worker",
+                "js": "inline gzip bundle",
+                "sha256": hashlib.sha256(bundle).hexdigest(),
+                "css": css,
+                "runtime": "in-page PDF.js and EPUBCheck",
                 "sample": "bundled original sample",
                 "sample_image": env["VITE_SAMPLE_IMAGE_URL"],
             },

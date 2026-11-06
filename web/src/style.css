@@ -1158,8 +1158,10 @@ input[type="checkbox"] {
   background: #efefef;
   padding: 28px 24px 0;
 }
-.preview-surface iframe {
+.preview-surface .epub-preview {
   display: block;
+  font-size: 16px;
+  color: #111;
   background: #fff;
   border: 1px solid #e4e4e4;
   box-shadow: 0 2px 12px #2e2e2e08;
@@ -1907,7 +1909,7 @@ input[type="checkbox"] {
     padding: 7px 12px;
     font-size: 11px;
   }
-  .preview-surface iframe {
+  .preview-surface .epub-preview {
     border-width: 1px 0 0;
   }
   .dialog .tool {

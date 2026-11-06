@@ -87,6 +87,8 @@ export interface ExportResult {
     internal: { errors: string[] };
     epubcheck: {
       status: string;
+      exit_code?: number;
+      report?: string;
       reason?: string;
       messages?: { message: string; severity?: string }[];
     };
@@ -101,10 +103,4 @@ export interface Detail {
   source: Evidence;
   revision: number;
   validation: ExportResult | null;
-}
-export interface Health {
-  status: string;
-  service: string;
-  tools: Record<string, string | null>;
-  epubcheck_available: boolean;
 }

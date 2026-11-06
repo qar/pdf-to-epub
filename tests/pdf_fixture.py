@@ -1,7 +1,7 @@
 from pathlib import Path
 
 
-def make_pdf(path, empty=False, scanned_body=False):
+def make_pdf(path, empty=False, scanned_body=False, columns=False):
     first = (
         b""
         if empty
@@ -19,6 +19,9 @@ BT /F1 12 Tf 48 320 Td (A final paragraph.) Tj ET"""
     )
     if scanned_body:
         first = b"q 240 0 0 320 30 40 cm /Scan Do Q\nBT /F1 12 Tf 130 20 Td (Page 1) Tj ET"
+        second = b""
+    if columns:
+        first = b"BT /F1 12 Tf 24 354 Td (Left column.) Tj 156 0 Td (Right column.) Tj ET"
         second = b""
     objects = [
         b"<< /Type /Catalog /Pages 2 0 R >>",

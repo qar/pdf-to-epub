@@ -24,7 +24,7 @@ import {
   Monitor,
   PanelLeft,
   PanelRight,
-  Plug,
+  HardDrive,
   Plus,
   Redo2,
   RefreshCw,
@@ -41,14 +41,16 @@ import {
   X,
   AlertTriangle,
 } from "lucide-react";
-import { Api, ApiError, downloadBlob, fileData } from "./api";
+import { downloadBlob } from "./download";
+import { notices } from "./notices";
+import EpubPreview from "./EpubPreview";
+import { BrowserWorkspace } from "./browser/workspace";
 import type {
   Appearance,
   Block,
   Book,
   Detail,
   ExportResult,
-  Health,
   Project,
   Unit,
 } from "./types";
@@ -64,7 +66,7 @@ import {
 } from "./editor";
 import PdfPage from "./PdfPage";
 
-const api = new Api();
+const workspace = new BrowserWorkspace();
 const kinds: Record<string, string> = {
   paragraph: "正文",
   heading: "小标题",
@@ -186,8 +188,8 @@ function SourceText({
 }
 
 export default function App() {
-  const [health, setHealth] = useState<Health | null>(null);
-  const [connected, setConnected] = useState(false);
+  const [ready, setReady] = useState(false);
+  const [persisted, setPersisted] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
   const [detail, setDetail] = useState<Detail | null>(null);
   const [book, setBook] = useState<Book | null>(null);
@@ -215,9 +217,8 @@ export default function App() {
   const [previewSection, setPreviewSection] = useState("");
   const [previewWidth, setPreviewWidth] = useState(680);
   const [dialog, setDialog] = useState<
-    "connect" | "import" | "chapter" | "omit" | "export" | "omissions" | null
+    "storage" | "import" | "chapter" | "omit" | "export" | "omissions" | null
   >(null);
-  const [engine, setEngine] = useState(api.engine);
   const [file, setFile] = useState<File | null>(null);
   const [password, setPassword] = useState("");
   const [language, setLanguage] = useState("en");
@@ -226,6 +227,7 @@ export default function App() {
   const [exportDraft, setExportDraft] = useState(false);
   const [exportResult, setExportResult] = useState<ExportResult | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
+  const backupInput = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const section =
     book?.sections.find((item) => item.id === sectionId) || book?.sections[0];
@@ -262,27 +264,23 @@ export default function App() {
 
   const reportError = useCallback((value: unknown) => {
     const message =
-      value instanceof Error ? value.message : "操作失败，请重试。";
+      value instanceof Error && value.name === "QuotaExceededError"
+        ? "浏览器存储空间不足，请先备份并移除不再使用的项目。"
+        : value instanceof Error
+          ? value.message
+          : "操作失败，请重试。";
     setError(message);
-    if (
-      value instanceof ApiError &&
-      ["unauthorized", "connection"].includes(value.code)
-    )
-      setConnected(false);
   }, []);
 
   const refresh = useCallback(async () => {
     setError("");
     try {
-      await api.pairLocal();
-      const info = await api.json<Health>("/api/health");
-      setHealth(info);
-      const list = await api.json<{ projects: Project[] }>("/api/projects");
-      setProjects(list.projects);
-      setConnected(true);
+      setProjects(await workspace.list());
+      setPersisted((await navigator.storage?.persisted?.()) || false);
+      setReady(true);
     } catch (e) {
-      setConnected(false);
-      if (api.token) reportError(e);
+      setReady(false);
+      reportError(e);
     }
   }, [reportError]);
 
@@ -355,7 +353,7 @@ export default function App() {
     setBusy("正在打开");
     setError("");
     try {
-      adopt(await api.json<Detail>(`/api/projects/${id}`));
+      adopt(await workspace.open(id));
       setTab("structure");
       setSearch("");
       setConfirmed(false);
@@ -418,10 +416,10 @@ export default function App() {
   const saveCurrent = async (): Promise<Detail> => {
     if (!detail || !book) throw new Error("请先打开书籍。");
     if (!dirty) return detail;
-    const saved = await api.json<Detail>(
-      `/api/projects/${detail.project.id}`,
-      "PUT",
-      { book, revision: detail.revision },
+    const saved = await workspace.save(
+      detail.project.id,
+      detail.revision,
+      book,
     );
     adopt(saved, true);
     return saved;
@@ -432,7 +430,7 @@ export default function App() {
     setError("");
     try {
       await saveCurrent();
-      setToast("已保存到本机");
+      setToast("已保存到浏览器书库");
     } catch (e) {
       reportError(e);
     } finally {
@@ -445,12 +443,7 @@ export default function App() {
     setError("");
     try {
       const saved = await saveCurrent();
-      const result = await api.json<{ html: string }>(
-        `/api/projects/${saved.project.id}/preview`,
-        "POST",
-        { revision: saved.revision, section: id },
-      );
-      setPreview(result.html);
+      setPreview(await workspace.preview(saved.project.id, saved.revision, id));
       setPreviewSection(id);
       setTab("preview");
     } catch (e) {
@@ -467,13 +460,7 @@ export default function App() {
     setBusy("正在读取原稿");
     setError("");
     try {
-      setPdf(
-        new Uint8Array(
-          await (
-            await api.request(`/api/projects/${detail.project.id}/pdf`)
-          ).arrayBuffer(),
-        ),
-      );
+      setPdf(await workspace.pdf(detail.project.id));
     } catch (e) {
       reportError(e);
     } finally {
@@ -489,12 +476,7 @@ export default function App() {
     setBusy("正在提取文字");
     setError("");
     try {
-      const result = await api.json<Detail>("/api/projects", "POST", {
-        filename: file.name,
-        data: await fileData(file),
-        language,
-        password,
-      });
+      const result = await workspace.import(file, language, password, setBusy);
       adopt(result);
       setTab("structure");
       setDialog(null);
@@ -514,14 +496,10 @@ export default function App() {
     setError("");
     try {
       const saved = await saveCurrent();
-      const reviewed = await api.json<Detail>(
-        `/api/projects/${saved.project.id}/review`,
-        "POST",
-        {
-          revision: saved.revision,
-          resolutions,
-          note: "已在网页工作台核对正文、章节与阅读顺序。",
-        },
+      const reviewed = await workspace.review(
+        saved.project.id,
+        saved.revision,
+        resolutions,
       );
       adopt(reviewed, true);
       setToast("复核完成");
@@ -538,10 +516,10 @@ export default function App() {
     setExportResult(null);
     try {
       const saved = await saveCurrent();
-      const result = await api.json<ExportResult>(
-        `/api/projects/${saved.project.id}/export`,
-        "POST",
-        { revision: saved.revision, draft: exportDraft },
+      const result = await workspace.export(
+        saved.project.id,
+        saved.revision,
+        exportDraft,
       );
       setExportResult(result);
       setDetail((current) =>
@@ -558,11 +536,7 @@ export default function App() {
     setBusy("正在下载");
     try {
       downloadBlob(
-        await (
-          await api.request(
-            `/api/projects/${detail.project.id}/download?export=${encodeURIComponent(exportResult.export_id)}`,
-          )
-        ).blob(),
+        await workspace.download(detail.project.id, exportResult.export_id),
         exportResult.filename,
       );
     } catch (e) {
@@ -573,10 +547,7 @@ export default function App() {
   };
   const pickFile = (selectedFile: File | null) => {
     if (!selectedFile) return;
-    if (!connected) {
-      setDialog("connect");
-      return;
-    }
+    if (!ready) return;
     if (dirty && !confirm("放弃尚未保存的修改并导入新书？")) return;
     setFile(selectedFile);
     setPassword("");
@@ -626,6 +597,35 @@ export default function App() {
       }}
     >
       <input
+        ref={backupInput}
+        type="file"
+        accept=".zip"
+        className="hidden"
+        aria-label="选择项目备份"
+        onChange={async (event) => {
+          const backup = event.target.files?.[0];
+          event.target.value = "";
+          if (
+            !backup ||
+            busy ||
+            (dirty && !confirm("放弃尚未保存的修改并恢复备份？"))
+          )
+            return;
+          setBusy("正在恢复项目");
+          setError("");
+          try {
+            adopt(await workspace.restore(backup));
+            setDialog(null);
+            setTab("structure");
+            setToast("项目备份已恢复");
+          } catch (e) {
+            reportError(e);
+          } finally {
+            setBusy("");
+          }
+        }}
+      />
+      <input
         ref={fileInput}
         type="file"
         accept="application/pdf,.pdf"
@@ -654,21 +654,16 @@ export default function App() {
         <span className="header-context">制作工作台</span>
         <div className="header-actions">
           <button
-            className={`connection ${connected ? "online" : ""}`}
-            onClick={() => {
-              setEngine(api.engine);
-              setDialog("connect");
-            }}
+            className={`connection ${ready ? "online" : ""}`}
+            onClick={() => setDialog("storage")}
           >
             <span className="status-dot" />
-            {connected ? "本机已连接" : "本机未连接"}
+            {ready ? "浏览器书库" : "书库未就绪"}
           </button>
           <button
             className="button primary small"
-            disabled={!!busy}
-            onClick={() =>
-              connected ? fileInput.current?.click() : setDialog("connect")
-            }
+            disabled={!!busy || !ready}
+            onClick={() => fileInput.current?.click()}
           >
             <Plus size={16} />
             导入 PDF
@@ -688,7 +683,7 @@ export default function App() {
         <main className="library">
           <div className="library-heading">
             <div>
-              <p className="eyebrow">本机工作区</p>
+              <p className="eyebrow">PDF to EPUB</p>
               <h1>书库</h1>
             </div>
             <div className="library-actions">
@@ -740,37 +735,41 @@ export default function App() {
                 src={import.meta.env.VITE_SAMPLE_IMAGE_URL || "/sample.png"}
                 alt="The Art of Noticing 示例书页"
               />
-              <h2>{connected ? "还没有书籍" : "本机工作区尚未连接"}</h2>
+              <h2>{ready ? "还没有书籍" : "正在打开书库"}</h2>
               <button
                 className="button primary"
-                onClick={() =>
-                  connected ? fileInput.current?.click() : setDialog("connect")
-                }
+                disabled={!ready || !!busy}
+                onClick={() => fileInput.current?.click()}
               >
-                {connected ? <FileUp size={18} /> : <Plug size={18} />}
-                {connected ? "导入 PDF" : "连接本机"}
+                <FileUp size={18} />
+                导入 PDF
               </button>
               <button
                 className="text-command"
-                disabled={!!busy}
+                disabled={!!busy || !ready}
                 onClick={async () => {
-                  if (!connected) {
-                    setDialog("connect");
-                    return;
-                  }
                   setBusy("正在读取示例");
                   try {
-                    const response = await fetch(
-                      import.meta.env.VITE_SAMPLE_URL || "/sample.pdf",
-                      { credentials: "omit" },
-                    );
-                    if (!response.ok) throw new Error("示例文档暂不可用。");
+                    const url =
+                      import.meta.env.VITE_SAMPLE_URL || "/sample.pdf";
+                    let sample: Blob;
+                    if (url.startsWith("data:application/pdf;base64,")) {
+                      const bytes = Uint8Array.from(
+                        atob(url.split(",")[1]),
+                        (char) => char.charCodeAt(0),
+                      );
+                      sample = new Blob([bytes], { type: "application/pdf" });
+                    } else {
+                      const response = await fetch(url, {
+                        credentials: "omit",
+                      });
+                      if (!response.ok) throw new Error("示例文档暂不可用。");
+                      sample = await response.blob();
+                    }
                     pickFile(
-                      new File(
-                        [await response.blob()],
-                        "The Art of Noticing.pdf",
-                        { type: "application/pdf" },
-                      ),
+                      new File([sample], "The Art of Noticing.pdf", {
+                        type: "application/pdf",
+                      }),
                     );
                     setLanguage("en");
                   } catch (e) {
@@ -788,14 +787,14 @@ export default function App() {
           <div className="library-bottom">
             <span>
               <ShieldCheck size={16} />
-              本机文件
+              文件未上传
             </span>
             <a
               href="https://github.com/qar/pdf-to-epub#网页工作台"
               target="_blank"
               rel="noreferrer"
             >
-              项目与运行说明
+              项目文档
               <ExternalLink size={14} />
             </a>
           </div>
@@ -846,14 +845,14 @@ export default function App() {
               <span className="toolbar-rule" />
               <Tool
                 label="保存"
-                disabled={!dirty || !!busy || !connected}
+                disabled={!dirty || !!busy || !ready}
                 onClick={() => void save()}
               >
                 <Save size={18} />
               </Tool>
               <button
                 className="button primary small"
-                disabled={!!busy || !connected}
+                disabled={!!busy || !ready}
                 onClick={() => {
                   setDialog("export");
                   setExportDraft(book.review.status !== "reviewed" || dirty);
@@ -1222,12 +1221,7 @@ export default function App() {
                   </div>
                   <div className="preview-surface">
                     {preview ? (
-                      <iframe
-                        title="EPUB 排版预览"
-                        sandbox=""
-                        srcDoc={preview}
-                        style={{ width: `min(100%, ${previewWidth}px)` }}
-                      />
+                      <EpubPreview html={preview} width={previewWidth} />
                     ) : (
                       <div className="empty-note">
                         <BookOpen size={30} />
@@ -1685,8 +1679,8 @@ export default function App() {
           </div>
           <footer className="status-bar">
             <span>
-              <span className={`status-dot ${connected ? "green" : ""}`} />
-              {busy || (connected ? "本机处理" : "连接已断开")}
+              <span className={`status-dot ${ready ? "green" : ""}`} />
+              {busy || (ready ? "浏览器处理" : "书库未就绪")}
             </span>
             <span>
               {detail.source.units.length.toLocaleString()} 个文字片段
@@ -1711,72 +1705,117 @@ export default function App() {
           {toast}
         </div>
       )}
-      {dialog === "connect" && (
-        <Dialog title="本机连接" close={closeDialog} busy={!!busy}>
+      {dialog === "storage" && (
+        <Dialog title="浏览器书库" close={closeDialog} busy={!!busy}>
           <div className="connection-summary">
-            <span className={`status-dot ${connected ? "green" : ""}`} />
-            <strong>{connected ? "转换服务已连接" : "等待连接"}</strong>
+            <HardDrive size={20} />
+            <strong>{persisted ? "已启用持久保存" : "标准保存"}</strong>
           </div>
-          <label className="field">
-            本机地址
-            <input
-              value={engine}
-              onChange={(event) => setEngine(event.target.value)}
-              spellCheck={false}
-            />
-          </label>
-          {health && (
-            <div className="tool-status">
-              <span>
-                文字提取
-                <small>
-                  {health.tools.pdftohtml && health.tools.pdftotext
-                    ? "可用"
-                    : "缺少 Poppler"}
-                </small>
-              </span>
-              <span>
-                权限处理
-                <small>{health.tools.qpdf ? "可用" : "缺少 qpdf"}</small>
-              </span>
-              <span>
-                EPUBCheck
-                <small>{health.epubcheck_available ? "可用" : "未配置"}</small>
-              </span>
-            </div>
-          )}
+          <p className="muted">
+            清除网站数据会移除书库。项目备份包含原稿和校对进度。
+          </p>
+          <div className="tool-status">
+            <button
+              className="button"
+              onClick={() =>
+                downloadBlob(
+                  new Blob([notices], { type: "text/plain;charset=utf-8" }),
+                  "third-party-notices.txt",
+                )
+              }
+            >
+              <Download size={16} />
+              第三方许可
+            </button>
+            <button
+              className="button"
+              disabled={!!busy || persisted}
+              onClick={async () => {
+                try {
+                  const granted =
+                    (await navigator.storage?.persist?.()) || false;
+                  setPersisted(granted);
+                  setToast(
+                    granted ? "已启用持久保存" : "浏览器暂未授予持久保存",
+                  );
+                } catch (e) {
+                  reportError(e);
+                }
+              }}
+            >
+              <HardDrive size={16} />
+              保留书库
+            </button>
+            <button
+              className="button"
+              disabled={!!busy}
+              onClick={() => backupInput.current?.click()}
+            >
+              <FolderOpen size={16} />
+              恢复项目备份
+            </button>
+            {detail && (
+              <button
+                className="button"
+                disabled={!!busy}
+                onClick={async () => {
+                  setBusy("正在备份项目");
+                  try {
+                    const saved = await saveCurrent();
+                    const backup = await workspace.backup(saved.project.id);
+                    downloadBlob(backup.blob, backup.filename);
+                  } catch (e) {
+                    reportError(e);
+                  } finally {
+                    setBusy("");
+                  }
+                }}
+              >
+                <Download size={16} />
+                备份当前项目
+              </button>
+            )}
+          </div>
           {error && (
             <p className="form-error" role="alert">
               {error}
             </p>
           )}
           <div className="dialog-footer">
-            <a
-              className="text-link"
-              href="https://github.com/qar/pdf-to-epub#网页工作台"
-              target="_blank"
-              rel="noreferrer"
-            >
-              运行说明
-              <ExternalLink size={13} />
-            </a>
+            {detail && (
+              <button
+                className="button"
+                disabled={!!busy}
+                onClick={async () => {
+                  if (
+                    !confirm("移除此书籍及其校对进度？已下载的备份不受影响。")
+                  )
+                    return;
+                  setBusy("正在移除项目");
+                  try {
+                    await workspace.remove(detail.project.id);
+                    setBook(null);
+                    setDetail(null);
+                    setDirty(false);
+                    setDialog(null);
+                    await refresh();
+                  } catch (e) {
+                    reportError(e);
+                  } finally {
+                    setBusy("");
+                  }
+                }}
+              >
+                <Trash2 size={16} />
+                移除当前项目
+              </button>
+            )}
             <button
               className="button primary"
-              onClick={() => {
-                try {
-                  api.setEngine(engine);
-                  if (location.origin === api.engine) {
-                    void refresh().then(() => setDialog(null));
-                  } else {
-                    location.assign(api.connectUrl());
-                  }
-                } catch (e) {
-                  reportError(e);
-                }
-              }}
+              onClick={closeDialog}
+              disabled={!!busy}
             >
-              <Plug size={16} />
-              连接本机
+              完成
             </button>
           </div>
         </Dialog>
@@ -1997,7 +2036,7 @@ export default function App() {
             </div>
             <div>
               <span>EPUBCheck</span>
-              <span>{health?.epubcheck_available ? "可用" : "未配置"}</span>
+              <span>5.4.0</span>
             </div>
           </div>
           <label className="check-field">
@@ -2052,6 +2091,29 @@ export default function App() {
                 {exportResult.validation.internal.errors.map((message) => (
                   <small key={message}>{message}</small>
                 ))}
+                {exportResult.validation.epubcheck.messages?.map(
+                  (message, index) => (
+                    <small key={index}>
+                      {message.severity}: {message.message}
+                    </small>
+                  ),
+                )}
+                {exportResult.validation.epubcheck.report && (
+                  <button
+                    className="text-command"
+                    onClick={() =>
+                      downloadBlob(
+                        new Blob([exportResult.validation.epubcheck.report!], {
+                          type: "application/json",
+                        }),
+                        `${exportResult.filename}.report.json`,
+                      )
+                    }
+                  >
+                    <Download size={14} />
+                    校验报告
+                  </button>
+                )}
               </div>
             </div>
           )}

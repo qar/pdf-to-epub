@@ -4,11 +4,12 @@ import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
+import { unzipSync, strFromU8 } from "fflate";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const artifacts = path.join(root, ".work/browser");
 await fs.mkdir(artifacts, { recursive: true });
-const origin = process.env.EPUB_APP_URL || "http://127.0.0.1:48291";
+const origin = process.env.EPUB_APP_URL || "http://127.0.0.1:5178";
 const browser = await chromium.launch({
   executablePath: process.env.EPUB_CHROME_EXECUTABLE,
   headless: true,
@@ -16,13 +17,18 @@ const browser = await chromium.launch({
 const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, acceptDownloads: true });
 const page = await context.newPage();
 page.setDefaultTimeout(20000);
-const errors = [], remoteBodies = [];
+const errors = [], remoteBodies = [], backendRequests = [];
 page.on("pageerror", error => errors.push(error.message));
 page.on("request", request => {
   if (request.postData() && !["localhost", "127.0.0.1"].includes(new URL(request.url()).hostname)) remoteBodies.push(request.url());
+  const url = new URL(request.url());
+  if (url.pathname.startsWith("/api/") || (["localhost", "127.0.0.1"].includes(url.hostname) && url.origin !== new URL(origin).origin)) backendRequests.push(request.url());
 });
 page.on("dialog", dialog => dialog.accept());
-const screenshot = name => page.screenshot({ path: path.join(artifacts, name + ".png"), fullPage: true });
+const screenshot = async name => {
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  return page.screenshot({ path: path.join(artifacts, name + ".png"), fullPage: true, animations: "disabled" });
+};
 const canvasReady = () => page.waitForFunction(() => {
   const c = document.querySelector(".pdf-canvas canvas");
   if (!c || c.width < 100) return false;
@@ -34,30 +40,32 @@ const canvasReady = () => page.waitForFunction(() => {
 try {
   await page.goto(origin);
   await page.getByRole("heading", { name: "书库", exact: true }).waitFor();
-  if (!["localhost", "127.0.0.1"].includes(new URL(origin).hostname)) {
-    await page.getByRole("button", { name: "本机未连接" }).click();
-    await page.getByRole("dialog").getByRole("button", { name: "连接本机" }).click();
-    await page.getByRole("link", { name: "连接本机编辑器" }).click();
-  }
-  await page.getByRole("button", { name: "本机已连接" }).waitFor();
+  await page.getByRole("button", { name: "浏览器书库", exact: true }).waitFor();
   assert.equal(new URL(page.url()).hash, "");
   await screenshot("library-desktop");
+  await page.getByRole("button", { name: "打开示例书籍", exact: true }).click();
+  await page.getByRole("button", { name: "提取文字", exact: true }).waitFor();
+  await page.getByRole("button", { name: "关闭", exact: true }).click();
+  await context.setOffline(true);
   await page.getByLabel("选择 PDF 文件").setInputFiles(path.join(root, "web/public/sample.pdf"));
   await page.getByRole("button", { name: "提取文字", exact: true }).click();
+  await page.getByRole("dialog").waitFor({ state: "hidden" });
   await page.getByRole("button", { name: "导出 EPUB", exact: true }).waitFor();
   await page.getByLabel("书名", { exact: true }).fill("The Art of Noticing");
   await page.getByLabel("作者", { exact: true }).fill("Studio Edition");
   await page.getByRole("button", { name: "保存", exact: true }).click();
-  await page.getByText("已保存到本机", { exact: true }).waitFor();
+  await page.getByText("已保存到浏览器书库", { exact: true }).waitFor();
   await page.locator(".block-row").first().click();
   await page.getByRole("button", { name: "设为章节标题" }).click();
   await page.getByRole("button", { name: "撤销", exact: true }).click();
   await page.getByRole("button", { name: "重做", exact: true }).click();
   await screenshot("structure-desktop");
   await page.getByRole("tab", { name: "排版", exact: true }).click();
-  const preview = page.frameLocator('iframe[title="EPUB 排版预览"]');
+  const preview = page.getByRole("region", { name: "EPUB 排版预览" });
   await preview.locator(".prose").waitFor();
-  assert.match(await preview.locator("body").innerText(), /A quiet morning/);
+  assert.match(await preview.locator(".prose").innerText(), /A quiet morning/);
+  assert.equal(await preview.locator(".prose > header + p").evaluate(el => getComputedStyle(el).textIndent), "0px");
+  await page.waitForFunction(() => [...document.fonts].filter(font => font.family === "Source Serif" && font.status === "loaded").length === 3);
   await screenshot("preview-desktop");
   await page.getByRole("tab", { name: "原稿", exact: true }).click();
   await canvasReady();
@@ -69,11 +77,15 @@ try {
   await page.getByText("复核已完成", { exact: true }).waitFor();
   await page.getByRole("button", { name: "导出 EPUB", exact: true }).click();
   await page.getByRole("button", { name: "制作并校验", exact: true }).click();
-  await page.getByText("EPUBCheck 校验通过", { exact: true }).waitFor({ timeout: 60000 });
+  await page.getByText("EPUBCheck 校验通过", { exact: true }).waitFor({ timeout: 125000 });
   await screenshot("validated-export");
   const downloaded = page.waitForEvent("download");
   await page.getByRole("button", { name: "下载 EPUB", exact: true }).click();
   await (await downloaded).saveAs(path.join(artifacts, "sample.epub"));
+  const epub = unzipSync(new Uint8Array(await fs.readFile(path.join(artifacts, "sample.epub"))));
+  assert.match(strFromU8(epub["EPUB/Text/text.xhtml"]), /A quiet morning/);
+  assert.equal(Object.keys(epub).some(name => /\.(png|jpe?g)$/i.test(name)), false);
+  if (process.env.EPUBCHECK_JAR) execFileSync("java", ["-jar", process.env.EPUBCHECK_JAR, path.join(artifacts, "sample.epub"), "--failonwarnings"], {stdio: "pipe"});
   await page.getByRole("button", { name: "关闭", exact: true }).click();
   await page.getByRole("tab", { name: "结构", exact: true }).click();
   for (const [name, width, height] of [["tablet", 834, 1112], ["mobile", 390, 844]]) {
@@ -91,11 +103,23 @@ try {
     await page.getByRole("tab", { name: "结构", exact: true }).click();
   }
   await page.setViewportSize({ width: 1440, height: 1000 });
+  await context.setOffline(false);
+  await page.reload();
+  await page.locator(".project-row").first().click();
+  assert.equal(await page.getByLabel("书名", {exact:true}).inputValue(), "The Art of Noticing");
+  await page.getByRole("button", {name:"浏览器书库", exact:true}).click();
+  const backup = page.waitForEvent("download");
+  await page.getByRole("button", {name:"备份当前项目"}).click();
+  await (await backup).saveAs(path.join(artifacts, "sample.epub-project.zip"));
+  await page.getByRole("button", {name:"完成", exact:true}).click();
+  await page.getByLabel("选择项目备份").setInputFiles(path.join(artifacts, "sample.epub-project.zip"));
+  await page.getByText("项目备份已恢复", {exact:true}).waitFor();
   const encrypted = path.join(artifacts, "encrypted.pdf");
   execFileSync("qpdf", ["--encrypt", "preview-test", "owner-test", "256", "--", path.join(root, "web/public/sample.pdf"), encrypted]);
   await page.getByLabel("选择 PDF 文件").setInputFiles(encrypted);
   await page.getByLabel("打开密码", { exact: false }).fill("preview-test");
   await page.getByRole("button", { name: "提取文字", exact: true }).click();
+  await page.getByRole("dialog").waitFor({ state: "hidden" });
   await page.getByRole("button", { name: "导出 EPUB", exact: true }).waitFor();
   await page.getByRole("tab", { name: "原稿", exact: true }).click();
   await page.getByLabel("原稿打开密码").fill("wrong-password");
@@ -109,6 +133,7 @@ try {
   execFileSync("python3", ["-c", "import sys; sys.path.insert(0, sys.argv[1]); from pdf_fixture import make_pdf; make_pdf(sys.argv[2], scanned_body=True)", path.join(root, "tests"), warningFile]);
   await page.getByLabel("选择 PDF 文件").setInputFiles(warningFile);
   await page.getByRole("button", { name: "提取文字", exact: true }).click();
+  await page.getByRole("dialog").waitFor({ state: "hidden" });
   await page.getByRole("button", { name: "导出 EPUB", exact: true }).waitFor();
   if (!(await page.getByRole("button", { name: "收起属性" }).isVisible())) await page.getByRole("button", { name: "切换属性" }).click();
   await page.locator(".inspector-tabs button").filter({ hasText: "复核" }).click();
@@ -116,15 +141,26 @@ try {
   await page.locator(".warning-item textarea").first().fill(note);
   assert.equal(await page.getByRole("button", { name: "保存", exact: true }).isEnabled(), true);
   await page.getByRole("button", { name: "保存", exact: true }).click();
-  await page.getByText("已保存到本机", { exact: true }).waitFor();
+  await page.getByText("已保存到浏览器书库", { exact: true }).waitFor();
   await page.getByTitle("返回书库").click();
   await page.locator(".project-row").first().click();
   await page.locator(".inspector-tabs button").filter({ hasText: "复核" }).click();
   assert.equal(await page.locator(".warning-item textarea").first().inputValue(), note);
   assert.equal(await page.getByRole("button", { name: "完成复核", exact: true }).isEnabled(), false);
-  assert.deepEqual(remoteBodies, [], "Book content must stay on loopback");
+  const columnsFile = path.join(artifacts, "columns.pdf");
+  execFileSync("python3", ["-c", "import sys; sys.path.insert(0, sys.argv[1]); from pdf_fixture import make_pdf; make_pdf(sys.argv[2], columns=True)", path.join(root, "tests"), columnsFile]);
+  await page.getByLabel("选择 PDF 文件").setInputFiles(columnsFile);
+  await page.getByRole("button", { name: "提取文字", exact: true }).click();
+  await page.getByRole("dialog").waitFor({ state: "hidden" });
+  await page.getByRole("button", { name: "导出 EPUB", exact: true }).waitFor();
+  assert.equal(await page.locator(".block-row").count(), 2);
+  assert.match(await page.locator(".block-row").nth(0).innerText(), /Left column\./);
+  assert.match(await page.locator(".block-row").nth(1).innerText(), /Right column\./);
+  await page.getByText("多栏或表格", { exact: true }).waitFor();
+  assert.deepEqual(remoteBodies, [], "Book content must stay in the browser");
+  assert.deepEqual(backendRequests, [], "No backend or local service requests");
   assert.deepEqual(errors, [], "Browser runtime errors");
-  console.log(JSON.stringify({ origin, text_epub: true, epubcheck: "valid", remote_uploads: remoteBodies.length, screenshots: artifacts }));
+  console.log(JSON.stringify({ origin, text_epub: true, epubcheck: "valid", offline_conversion: true, persisted_after_reload: true, backup_restored: true, backend_requests: backendRequests.length, remote_uploads: remoteBodies.length, screenshots: artifacts }));
 } catch (error) {
   await screenshot("failure");
   throw error;

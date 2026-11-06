@@ -1,13 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import {
-  getDocument,
-  GlobalWorkerOptions,
-  PasswordResponses,
-} from "pdfjs-dist";
-import PdfWorker from "pdfjs-dist/build/pdf.worker.min.mjs?worker&inline";
+import { PasswordResponses } from "pdfjs-dist";
+import { getDocument } from "./browser/pdf";
 import type { PDFDocumentProxy } from "pdfjs-dist";
-
-GlobalWorkerOptions.workerPort = new PdfWorker();
 
 export default function PdfPage({
   data,

@@ -54,10 +54,10 @@ jobs:
           npx playwright install --with-deps chromium
       - name: Verify Browser Workflow
         run: |
-          pdf-to-epub serve --data-dir "$RUNNER_TEMP/web-workspace" --epubcheck-jar "$EPUBCHECK_JAR" > "$RUNNER_TEMP/web-server.log" 2>&1 &
+          npm --prefix web run preview -- --port 5178 --strictPort > "$RUNNER_TEMP/web-server.log" 2>&1 &
           server_pid=$!
           trap 'kill "$server_pid"' EXIT
-          curl --retry 10 --retry-connrefused --retry-delay 1 --fail http://127.0.0.1:48291/api/health
+          curl --retry 10 --retry-connrefused --retry-delay 1 --fail http://127.0.0.1:5178/
           npm --prefix web run smoke
       - uses: actions/upload-artifact@v4
         if: failure()
