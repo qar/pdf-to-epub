@@ -72,6 +72,8 @@ npm --prefix web ci
 
 本机验收结果：29 项 Python 测试、5 项前端测试通过，核心覆盖率为 85%。Ruff、Prettier、TypeScript、生产构建与依赖审计通过。浏览器流程验证了加密原稿密码、部分复核记录保存和文字 EPUB 下载；书籍请求全部发送至 loopback。线上已发布第 5 版，响应为 HTTP 200，但上述 CSP 仍阻止完整应用运行，公开地址验收尚未通过。
 
+应用提交 `458f91a` 已推送到 `main`。[GitHub Actions](https://github.com/qar/pdf-to-epub/actions/runs/42202978933) 在干净的 Ubuntu 环境中通过 Python 测试、实际 EPUBCheck、包构建、前端检查和完整浏览器流程。
+
 ```bash
 # 先按 README 启动带 EPUBCheck 的本机服务。
 cd web
