@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "server",
+  "dolt_database": "epub",
+  "project_id": "f4be482e-84ea-4ec3-a4d2-51cb1d6f8482"
+}
