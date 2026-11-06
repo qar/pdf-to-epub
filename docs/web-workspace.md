@@ -52,6 +52,10 @@ npm --prefix web ci
 
 ## 实现过程与验收
 
+2026-11-06，修复长章节预览的白底高度不足。预览区的 Flex 拉伸将纸面限制为视口高度，导致后续正文落在灰色背景上。改为顶部对齐，让纸面随正文自然增高。原创示例和 183 页原 PDF 均通过桌面、平板、手机的长短章节检查：正文不越出纸面，末段可滚动到可视区，短章节填满预览区，页面无横向溢出。
+
+回归检查运行 `npm --prefix web run smoke:preview`，已接入 CI。可设置 `EPUB_PREVIEW_PDF` 在本机验证其他 PDF。截图只写入忽略的 `.work/browser-preview`，个人书籍不进入仓库或站点资源。
+
 2026-11-06，第 6 版通过 Otimififi Site 发布。公开网址完整验收通过；13 项前端测试和 29 项 Python 测试通过，Python 核心覆盖率 85%。另用用户提供的 183 页 PDF 在公开页面加载后断网测试，完成文字提取和通过 EPUBCheck 的草稿导出。个人书籍和输出只存入忽略的本机工作目录。
 
 实现提交 `6ec6de3` 的 [GitHub CI](https://github.com/qar/pdf-to-epub/actions/runs/42223714648) 已通过，包括 Python 包构建、前端检查和独立浏览器流程。183 页草稿另经 Java 原版 EPUBCheck 验证，错误与警告均为 0。

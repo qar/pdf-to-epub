@@ -1151,7 +1151,7 @@ input[type="checkbox"] {
 .preview-surface {
   display: flex;
   justify-content: center;
-  align-items: stretch;
+  align-items: flex-start;
   flex: 1;
   min-height: 0;
   overflow: auto;
