@@ -17,6 +17,7 @@ const browser = await chromium.launch({
 const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, acceptDownloads: true });
 const page = await context.newPage();
 page.setDefaultTimeout(20000);
+page.setDefaultNavigationTimeout(120000);
 const errors = [], remoteBodies = [], backendRequests = [];
 page.on("pageerror", error => errors.push(error.message));
 page.on("request", request => {

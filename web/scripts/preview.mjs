@@ -10,6 +10,7 @@ await fs.mkdir(artifacts, { recursive: true });
 const browser = await chromium.launch({ executablePath: process.env.EPUB_CHROME_EXECUTABLE });
 const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
 page.setDefaultTimeout(30000);
+page.setDefaultNavigationTimeout(120000);
 try {
   await page.goto(process.env.EPUB_APP_URL || "http://127.0.0.1:5178");
   await page.getByRole("heading", { name: "书库", exact: true }).waitFor();
