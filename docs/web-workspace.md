@@ -19,6 +19,8 @@ flowchart LR
 
 排版预览从生成的 EPUB 中读取 XHTML 和 CSS，放入 Shadow DOM 隔离样式。正文仅来自 XML 构建器转义后的文字，不执行书籍脚本。内嵌字体通过 FontFace 的二进制接口加载，不请求远端字体。首段、章节标题和字体与导出共用同一版式。原稿使用 PDF.js canvas 渲染。
 
+EPUB 的正文宽度交给阅读器。模板不设置左右页面留白、百分比正文宽度或正文宽度上限，避免与 iPhone Books 等阅读器的留白叠加。网页预览只在纸面外框保留 16px 左右留白，这部分不写入 EPUB。
+
 ## 保存与导出
 
 每次保存都带正整数 revision。IndexedDB 读写事务拒绝过期 revision，防止多个标签页覆盖彼此的修改。任何编辑都会使整体复核与旧导出失效。下载绑定具体 export ID 和 revision；同一版本的草稿与正式版也不能互相替换。
@@ -51,6 +53,12 @@ npm --prefix web ci
 站点 ID：`xm5pvv`。首页 ID：`eafd635b-2a57-4349-89e2-d9c6059f2033`。站点地址为 `https://xm5pvv.otimififi.site`，首页地址为 `https://xm5pvv.otimififi.site/`。
 
 ## 实现过程与验收
+
+2026-11-06，根据 iPhone Books 窄屏阅读反馈，移除共享模板的左右 7% 页面留白、90%/92% 正文宽度和 36em 宽度上限。保留纵向节奏、字体、字号、缩进与正文结构。既有精排成品另生成新文件，12 个 XHTML 和全部字体与原文件字节一致，实际 EPUBCheck 为 0 错误、0 警告。
+
+新增 `npm --prefix web run smoke:reader`，读取完整制作验收导出的 `.work/browser/sample.epub`，检查 320px、390px、768px 和窄屏放大字号。测试在模拟阅读区中加载真实 XHTML、CSS 和字体，验证正文使用全部分配宽度、无横向溢出、无额外左右页面留白。可用 `EPUB_READER_FILE` 指定本机文件，截图只写入忽略的 `.work/reader-layout`。这是浏览器布局检查，不等于 iPhone Books 真机验证。
+
+修订成品的 Chromium 与 WebKit 四组检查均通过。设置 `EPUB_READER_ENGINE=webkit` 可使用 WebKit；本机需先在 `web` 目录执行 `npx playwright install webkit`。默认 CI 使用 Chromium，CLI 与浏览器的对照测试覆盖默认样式和三种可选模板。
 
 2026-11-06，第 7 版修复长章节预览的白底高度不足。预览区的 Flex 拉伸将纸面限制为视口高度，导致后续正文落在灰色背景上。改为顶部对齐，让纸面随正文自然增高。原创示例和 183 页原 PDF 均通过本地桌面、平板、手机的长短章节检查：正文不越出纸面，末段可滚动到可视区，短章节填满预览区，页面无横向溢出。通过 Site 发布后，公开网址的六组预览检查和完整制作流程均通过，包含断网制作、真实 EPUBCheck、刷新恢复、备份恢复和零书籍上传。
 

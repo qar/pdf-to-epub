@@ -17,54 +17,65 @@ afterEach(() => {
     .forEach((path) => rmSync(path, { recursive: true, force: true }));
 });
 describe("浏览器文字 EPUB", () => {
-  it("与 Python 核心保留相同正文、字形与标题连接，并生成真实文字包", async () => {
-    const f = await fixture();
-    const output = buildEpub(f.book, f.source, f.sourceHash);
-    const files = unzipSync(output);
-    expect(strFromU8(files.mimetype)).toBe("application/epub+zip");
-    expect(
-      Object.keys(files).some((key) => /\.(png|jpeg|jpg)$/.test(key)),
-    ).toBe(false);
-    const doc = new DOMParser().parseFromString(
-      strFromU8(files["EPUB/Text/chapter.xhtml"]),
-      "application/xhtml+xml",
-    );
-    expect(doc.getElementsByTagName("h1")[0].textContent).toBe("bookstore");
-    expect(doc.getElementsByTagName("em")[0].textContent).toBe(
-      "A quiet morning.",
-    );
-    expect(doc.getElementsByTagName("p")[2].textContent).toBe(
-      "第一句。第二句。",
-    );
-    const path = mkdtempSync(join(tmpdir(), "browser-epub-parity-"));
-    temporary.push(path);
-    writeFileSync(join(path, "source.json"), f.sourceJson);
-    writeFileSync(join(path, "book.json"), JSON.stringify(f.book));
-    const cli = fileURLToPath(
-      new URL("../../../skills/pdf-to-epub/scripts/epub.py", import.meta.url),
-    );
-    execFileSync("python3", [
-      cli,
-      "build",
-      join(path, "book.json"),
-      "--output",
-      join(path, "python.epub"),
-    ]);
-    const python = unzipSync(readFileSync(join(path, "python.epub")));
-    const original = new DOMParser().parseFromString(
-      strFromU8(python["EPUB/Text/chapter.xhtml"]),
-      "application/xhtml+xml",
-    );
-    expect(doc.getElementsByTagName("body")[0].textContent).toBe(
-      original.getElementsByTagName("body")[0].textContent,
-    );
-    expect(strFromU8(files["EPUB/Styles/book.css"])).toBe(
-      strFromU8(python["EPUB/Styles/book.css"]),
-    );
-    expect(previewEpub(output, "chapter")).toContain("data:");
-    expect(previewEpub(output, "chapter")).toContain(".prose >");
-    expect(previewEpub(output, "chapter")).not.toContain(".prose &gt;");
-  });
+  it.each([null, "classic", "modern", "compact"] as const)(
+    "与 Python 核心保留相同正文、字形、CSS 与标题连接（%s）",
+    async (template) => {
+      const f = await fixture();
+      if (template) {
+        f.book.appearance = {
+          template,
+          font_size: 1.2,
+          line_height: 1.6,
+          indent: 1.25,
+        };
+      }
+      const output = buildEpub(f.book, f.source, f.sourceHash);
+      const files = unzipSync(output);
+      expect(strFromU8(files.mimetype)).toBe("application/epub+zip");
+      expect(
+        Object.keys(files).some((key) => /\.(png|jpeg|jpg)$/.test(key)),
+      ).toBe(false);
+      const doc = new DOMParser().parseFromString(
+        strFromU8(files["EPUB/Text/chapter.xhtml"]),
+        "application/xhtml+xml",
+      );
+      expect(doc.getElementsByTagName("h1")[0].textContent).toBe("bookstore");
+      expect(doc.getElementsByTagName("em")[0].textContent).toBe(
+        "A quiet morning.",
+      );
+      expect(doc.getElementsByTagName("p")[2].textContent).toBe(
+        "第一句。第二句。",
+      );
+      const path = mkdtempSync(join(tmpdir(), "browser-epub-parity-"));
+      temporary.push(path);
+      writeFileSync(join(path, "source.json"), f.sourceJson);
+      writeFileSync(join(path, "book.json"), JSON.stringify(f.book));
+      const cli = fileURLToPath(
+        new URL("../../../skills/pdf-to-epub/scripts/epub.py", import.meta.url),
+      );
+      execFileSync("python3", [
+        cli,
+        "build",
+        join(path, "book.json"),
+        "--output",
+        join(path, "python.epub"),
+      ]);
+      const python = unzipSync(readFileSync(join(path, "python.epub")));
+      const original = new DOMParser().parseFromString(
+        strFromU8(python["EPUB/Text/chapter.xhtml"]),
+        "application/xhtml+xml",
+      );
+      expect(doc.getElementsByTagName("body")[0].textContent).toBe(
+        original.getElementsByTagName("body")[0].textContent,
+      );
+      expect(strFromU8(files["EPUB/Styles/book.css"])).toBe(
+        strFromU8(python["EPUB/Styles/book.css"]),
+      );
+      expect(previewEpub(output, "chapter")).toContain("data:");
+      expect(previewEpub(output, "chapter")).toContain(".prose >");
+      expect(previewEpub(output, "chapter")).not.toContain(".prose &gt;");
+    },
+  );
   it("拒绝遗漏、重复、无理由排除和替换证据", async () => {
     for (const mode of ["missing", "duplicate", "omission", "source"]) {
       const f = await fixture();

@@ -16,7 +16,7 @@
   font-style: normal;
   src: url("../Fonts/SourceSerif4-Semibold.otf");
 }
-@page { margin: 6% 7%; }
+@page { margin: 6% 0; }
 html { -webkit-text-size-adjust: 100%; }
 body {
   font-family: "Source Serif", Georgia, serif;
@@ -24,9 +24,9 @@ body {
   font-weight: 400;
   line-height: 1.5;
   letter-spacing: 0;
-  width: 90%;
-  max-width: 36em;
-  margin: 0 auto;
+  width: auto;
+  max-width: none;
+  margin: 0;
   padding: 0;
   font-kerning: normal;
   font-variant-ligatures: common-ligatures;
@@ -130,7 +130,6 @@ blockquote > p:first-child { margin-top: 0; }
 .footnote { font-size: .88em; }
 .note-back { display: inline-block; margin-top: .5em; }
 @media (max-width: 420px) {
-  body { width: 92%; }
   blockquote { margin-left: .65em; margin-right: .65em; }
   .title-page { padding-top: 3em; }
   .part-page { padding-top: 4em; }

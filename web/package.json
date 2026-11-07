@@ -9,6 +9,7 @@
     "test": "vitest run",
     "smoke": "node scripts/smoke.mjs",
     "smoke:preview": "node scripts/preview.mjs",
+    "smoke:reader": "node scripts/reader.mjs",
     "format": "prettier --write src",
     "format:check": "prettier --check src",
     "preview": "vite preview --host 127.0.0.1"

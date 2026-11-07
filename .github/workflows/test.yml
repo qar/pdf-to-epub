@@ -60,6 +60,7 @@ jobs:
           curl --retry 10 --retry-connrefused --retry-delay 1 --fail http://127.0.0.1:5178/
           npm --prefix web run smoke
           npm --prefix web run smoke:preview
+          npm --prefix web run smoke:reader
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
@@ -67,3 +68,4 @@ jobs:
           path: |
             .work/browser
             .work/browser-preview
+            .work/reader-layout

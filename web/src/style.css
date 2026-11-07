@@ -1160,6 +1160,7 @@ input[type="checkbox"] {
 }
 .preview-surface .epub-preview {
   display: block;
+  padding: 0 16px;
   font-size: 16px;
   color: #111;
   background: #fff;

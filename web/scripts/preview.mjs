@@ -29,12 +29,14 @@ try {
     const bounds = await preview.evaluate(host => {
       const paper = host.getBoundingClientRect();
       const body = host.shadowRoot.querySelector("body");
+      const bodyBounds = body.getBoundingClientRect();
       const content = [...body.querySelectorAll("p, h1, h2, hr")].map(element => element.getBoundingClientRect());
       const surface = host.parentElement.getBoundingClientRect();
       const last = content.at(-1);
       return {
         paperHeight: paper.height,
-        contentHeight: body.getBoundingClientRect().height,
+        contentHeight: bodyBounds.height,
+        sideInsets: [bodyBounds.left - paper.left, paper.right - bodyBounds.right],
         overflowBottom: Math.max(...content.map(rect => rect.bottom)) - paper.bottom,
         overflowLeft: paper.left - Math.min(...content.map(rect => rect.left)),
         overflowRight: Math.max(...content.map(rect => rect.right)) - paper.right,
@@ -48,6 +50,7 @@ try {
     assert.ok(bounds.overflowLeft <= 1 && bounds.overflowRight <= 1, "正文超出书页宽度");
     assert.ok(bounds.lastVisible, "末段必须可以滚动到可视区域");
     assert.ok(bounds.fillsViewport, "短章节的白色书页应填满预览区域");
+    assert.ok(bounds.sideInsets.every(value => value >= 12 && value <= 20), "预览留白应适度，不挤窄正文");
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "页面横向溢出");
   };
   for (const [name, width, height] of [["desktop", 1440, 1000], ["tablet", 834, 1112], ["mobile", 390, 844]]) {
